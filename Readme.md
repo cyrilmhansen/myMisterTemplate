@@ -5,6 +5,23 @@ This core contains the latest version of framework and will be updated when fram
 
 It's highly recommended to follow the notes to keep it standardized for easier maintenance and collaboration with other developers.
 
+## FemtoRV32 integration demo
+
+The template integrates the [`femtorv32_gracilis`](rtl/femtorv32_gracilis.v) softcore CPU. A tiny on-chip RAM is initialised
+with a loop that continuously increments a counter and stores it to a memory-mapped register. The low byte of this register is
+XORed with the original video pattern, so the running CPU visibly modulates the picture when the core is built for the MiSTer.
+
+For quick validation, a Verilator simulation harness is provided. It instantiates `mycore`, drives the clocks and reset, and
+checks that the FemtoRV32 loop updates the register with a non-zero value. To run the simulation:
+
+```bash
+sudo apt-get install verilator   # if Verilator is not already installed
+make -C sim run
+```
+
+The simulation prints the observed register value and returns success once the CPU has executed several iterations of its demo
+program.
+
 ## Source structure
 
 ### Legend:
