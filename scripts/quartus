@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Wrapper to run Quartus from a container. Based on vendor/scripts/quartus
+# but placed at project level for convenience.
+
+# Auto-detect container runtime: prefer podman, fall back to docker
+if command -v podman >/dev/null 2>&1; then
+  RUNTIME=podman
+elif command -v docker >/dev/null 2>&1; then
+  RUNTIME=docker
+else
+  echo "ERROR: Neither podman nor docker found in PATH." >&2
+  exit 1
+fi
+
+# Use Docker Hub image; with podman, docker.io prefix avoids registry mismatches
+# Choose image; allow override via QUARTUS_IMAGE env (recommended: Standard 17.0.2)
+# The Lite edition often overuses LABs on MiSTer sys due to IP mapping limits.
+IMAGE="${QUARTUS_IMAGE:-docker.io/machx428/quartus-mister:latest}"
+
+# Runtime-specific options
+USEROPTS=()
+RUNTIMEOPTS=()
+VOL_MOUNT="$(pwd):/build"
+if [ "$RUNTIME" = "podman" ]; then
+  # Preserve host UID/GID so artifacts are owned by the caller
+  USEROPTS+=(--userns=keep-id)
+  # On SELinux systems, relabel bind mount for the container
+  if command -v getenforce >/dev/null 2>&1 && [ "$(getenforce 2>/dev/null || echo Permissive)" != "Disabled" ]; then
+    VOL_MOUNT+=":Z"
+  fi
+elif [ "$RUNTIME" = "docker" ]; then
+  # Run container processes as the calling user to avoid root-owned artifacts
+  USEROPTS+=(--user "$(id -u):$(id -g)")
+fi
+
+# Prepend quartus_sh if first arg looks like an option (e.g., --version)
+if [[ $# -gt 0 && "$1" == -* ]]; then
+  set -- quartus_sh "$@"
+fi
+
+# Choose TTY/interactive flags based on current stdio
+TTY_FLAGS=()
+if [ -t 0 ]; then TTY_FLAGS+=( -i ); fi
+if [ -t 1 ]; then TTY_FLAGS+=( -t ); fi
+
+# Optional CPU/memory limits (set QUARTUS_CPUS/CPUSET/MEM/SHM)
+if [[ -n "${QUARTUS_CPUS-}" ]]; then
+  RUNTIMEOPTS+=( --cpus="${QUARTUS_CPUS}" )
+fi
+if [[ -n "${QUARTUS_CPUSET-}" ]]; then
+  RUNTIMEOPTS+=( --cpuset-cpus="${QUARTUS_CPUSET}" )
+fi
+if [[ -n "${QUARTUS_MEM-}" ]]; then
+  # e.g., QUARTUS_MEM=8g
+  RUNTIMEOPTS+=( --memory="${QUARTUS_MEM}" )
+fi
+if [[ -n "${QUARTUS_SHM-}" ]]; then
+  # e.g., QUARTUS_SHM=2g (large shared mem helps heavy steps)
+  RUNTIMEOPTS+=( --shm-size="${QUARTUS_SHM}" )
+fi
+
+echo "[quartus] Using image: $IMAGE" >&2
+exec "$RUNTIME" run --rm "${TTY_FLAGS[@]}" "${RUNTIMEOPTS[@]}" \
+  "${USEROPTS[@]}" \
+  -e "JTAG_SERVER=${JTAG_SERVER-}" \
+  -e "JTAG_PASSWD=${JTAG_PASSWD-}" \
+  -e "LM_LICENSE_FILE=${LM_LICENSE_FILE-}" \
+  -e "QUARTUS_LICENSE_FILE=${QUARTUS_LICENSE_FILE-}" \
+  -v "$VOL_MOUNT" \
+  "$IMAGE" \
+  /usr/local/bin/quartus_wrapper "$@"
