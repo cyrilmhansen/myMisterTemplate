@@ -22,6 +22,8 @@
 `define NRV_OPTIMIZE "-O3"
 `define NRV_INTERRUPTS
 
+/* verilator lint_off DECLFILENAME */
+/* verilator lint_off UNUSEDSIGNAL */
 module FemtoRV32(
    input          clk,
 
@@ -557,6 +559,8 @@ module FemtoRV32(
 `endif
 
 endmodule
+/* verilator lint_on UNUSEDSIGNAL */
+/* verilator lint_on DECLFILENAME */
 
 /*****************************************************************************/
 
